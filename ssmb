@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# adjust the variables section below
+#
+# then: place this in /etc/init.d
+# then: chmod +x /etc/init.d/ssmb
+# then: update-rc.d ssmb defaults
+#
+# start daemon with /etc/init.d/ssmb start
+# stop it with /etc/init.d/ssmb stop
+
+DAEMON=/usr/bin/python
+ARGS=home/pi/ssmb/ssmb.py
+LOG=/home/pi/ssmb/sonos-marantz-bridge.log
+PIDFILE=/var/run/ssmb.pid
+USER=pi
+GROUP=pi
+
+case "$1" in
+  start)
+    echo "Starting server"
+    /sbin/start-stop-daemon --start --pidfile $PIDFILE \
+        --user $USER --group $GROUP \
+        -b --make-pidfile \
+        --chuid $USER \
+        --startas /bin/bash -- -c "exec $DAEMON $ARGS >>$LOG 2>&1"
+    ;;
+  stop)
+    echo "Stopping server"
+    /sbin/start-stop-daemon --stop --pidfile $PIDFILE --verbose
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
