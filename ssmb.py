@@ -181,7 +181,7 @@ while True:
             #if MARANTZ_SOUNDPRG is not None:
             #    MARANTZ_set_value('MAIN:SOUNDPRG', MARANTZ_SOUNDPRG)
         if last_status == 'PLAYING' and status == 'PAUSED_PLAYBACK':
-            if avr.get_source('SI') == MARANTZ_INPUT:
+            if avr.get_source()['SI'] == MARANTZ_INPUT:
                 if not avr.get_power()['PW'] == 'OFF':
                     avr.set_power('OFF')
         last_status = status
