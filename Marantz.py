@@ -8,7 +8,7 @@ __author__ = 'Josh'
 
 class IP():
     sources = ["TUNER", "DVD", "BD", "TV", "SAT", "SAT/CBL", "MPLAY", "GAME", "AUX1", "NET", "PANDORA", "SIRIUSXM",
-               "LASTFM", "FLICKR", "FAVORITES", "IRADIO", "SERVER", "USB/IPOD", "USB", "IPD", "IRP", "FVP"]
+               "LASTFM", "FLICKR", "FAVORITES", "IRADIO", "SERVER", "USB/IPOD", "USB", "IPD", "IRP", "FVP","CD"]
 
     def __init__(self, ip):
         self.ip = ip
@@ -17,29 +17,29 @@ class IP():
 
     def connect(self):
         try:
-            print "Testing existing connection...",
-            self.conn.write("PING\r")
-            print "[CONNECTED]"
+#            print("Testing existing connection...", end=' ')
+            self.conn.write(str.encode("PING\r"))
+#            print("[CONNECTED]")
             self.reset_timer()
         except:
-            print "[DISCONNECTED]"
-            print "Connecting...",
+#            print("[DISCONNECTED]")
+#            print("Connecting...", end=' ')
             self.conn.open(self.ip, 23, 3)
-            print "[CONNECTED]"
+#            print("[CONNECTED]")
             self.start_timer()
         return self.conn
 
     def disconnect(self):
-        print "Disconnecting...",
+        #print("Disconnecting...", end=' ')
         self.conn.close()
-        print "[DISCONNECTED]"
+        #print("[DISCONNECTED]")
 
     def start_timer(self):
         self.timer = threading.Timer(10, self.disconnect)
         self.timer.start()
 
     def reset_timer(self):
-        print "Resetting timer."
+#        print("Resetting timer.")
         self.timer.cancel()
         self.start_timer()
 
@@ -70,33 +70,31 @@ class IP():
             else:
                 action = command
                 command += "?\r"  # append the query characters ?\r
-            print 'Command = '+command
+
             if pattern is None:
                 pattern = action+"([a-zA-Z0-9]*)\r"
             #send the command to the AVR
-            print "Clearing previous buffer...", t.read_very_eager().encode("string_escape")
-            print ("Sending: '%s'" % command).encode('string_escape')
-            print ("Looking for: '%s'" % pattern).encode('string_escape')
-            t.write(command)
-            find = t.expect([pattern], 1)
+#            print("Clearing previous buffer...", t.read_very_eager(),"\r")
+#            print("Sending: '%s'" % command,)
+#            print("Looking for: '%s'" % pattern)
+            t.write(str.encode(command))
+            find = t.expect([str.encode(pattern)], 1)
             if find[1] is None:
-                print >> sys.stderr, "[ERROR] Match failed. Trying one more time...Sending command again."
-                t.write(command)
+ #               print("[ERROR] Match failed. Trying one more time...Sending command again.", file=sys.stderr)
+                t.write(str.encode(command))
                 find = t.expect([pattern], 1)
-            print "Response:", (find[2]).encode("string_escape")
+  #          print("Response:", (find[2]).decode("utf-8"))
             matches = find[1]
             response[action] = matches.group(1)
             #reset the pattern for the next run
             pattern = None
             self.reset_timer()
         #t.close()
-
         return response
 
     def write_command(self, command):
         t = self.connect()
-        t.write(command)
-        print 'Command = '+command
+        t.write(str.encode(command))
         #t.close()
         self.reset_timer()
 
@@ -131,7 +129,6 @@ class IP():
         # 'PWON\r@PWR:2\r'
         # 'PWSTANDBY\r@PWR:1\r'
 
-
     def set_power(self, onoff, *args, **kwargs):
         if type(onoff) is not str:  # and type(onoff) is not unicode
             raise TypeError("Expecting 'ON' or 'OFF'. Received %s of type %s." % (str(onoff), str(type(onoff))))
@@ -147,7 +144,7 @@ class IP():
         return self.query("MV?\r", "MV([^\r]+)\r")
 
     def set_volume(self, volume):
-        print "Volume:", ("MV" + volume + "\r")
+        print(("MARANTZ Volume:        {}".format(volume)))
         self.write_command("MV" + volume + "\r")
     
     def set_volume_up(self):
@@ -155,12 +152,3 @@ class IP():
        
     def set_volume_down(self):
         self.write_command("MVDOWN\r")
-
-    def test(self):
-        nr = IP("192.168.1.29")
-        nr.get_source()
-        nr.get_mute()
-        nr.set_source("DVD")
-        nr.get_source()
-        nr.set_source("BD")
-        nr.get_source()

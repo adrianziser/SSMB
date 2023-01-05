@@ -1,4 +1,12 @@
 #!/bin/bash
+### BEGIN INIT INFO
+# Provides:          ssmb
+# Required-Start: $local_fs $network $remote_fs $named $time
+# Required-Stop: $local_fs $network $remote_fs $named
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Halts ssmb...
+### END INIT INFO
 
 # adjust the variables section below
 #
@@ -9,7 +17,7 @@
 # start daemon with /etc/init.d/ssmb start
 # stop it with /etc/init.d/ssmb stop
 
-DAEMON=/usr/bin/python
+DAEMON=/usr/bin/python3
 ARGS=home/pi/ssmb/ssmb.py
 LOG=/home/pi/ssmb/sonos-marantz-bridge.log
 PIDFILE=/var/run/ssmb.pid

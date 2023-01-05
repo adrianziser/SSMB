@@ -41,10 +41,11 @@
 import os
 import sys
 import time
+from datetime import datetime
 import re
-import urllib, urllib2
+import urllib.request, urllib.parse, urllib.error, urllib.request, urllib.error, urllib.parse
 import soco
-import Queue
+import queue
 import signal
 import Marantz
 
@@ -56,7 +57,7 @@ __version__     = '0.3'
 
 # --- Please adapt these settings ---------------------------------------------
 
-SONOS_UUID       = 'RINCON_B8E937953D7201400'	# IP address of your MARANTZ Receiver. Look it up in your router or set it in the Receiver menu.
+SONOS_UUID       = 'RINCON_949F3EB99CCA01400'	# IP address of your MARANTZ Receiver. Look it up in your router or set it in the Receiver menu.
 MARANTZ_IP       = '192.168.11.4'            	# IP address of your MARANTZ Receiver. Look it up in your router or set it in the Receiver menu.
 MARANTZ_INPUT    = 'CD'                     	# Name of your Receiver's input the Sonos Connect is connected to. Should be one
 												# of AV1, AV2, ..., HDMI1, HDMI2, ..., AUDIO1, AUDIO2, ..., TUNER, PHONO, V-AUX, DOCK,
@@ -67,13 +68,13 @@ MARANTZ_SOUNDPRG = '5ch Stereo'              	# DSP Sound Program to set the Rec
 
 
 def auto_flush_stdout():
-    unbuffered = os.fdopen(sys.stdout.fileno(), 'w', 0)
+    unbuffered = os.fdopen(sys.stdout.fileno(), 'wb', 0)
     sys.stdout.close()
     sys.stdout = unbuffered
 
 def handle_sigterm(*args):
     global break_loop
-    print u"SIGTERM caught. Exiting gracefully.".encode('utf-8')
+    print(("SIGTERM caught. Exiting gracefully."))
     break_loop = True
 
 # --- Connect to Marantz AVR --------------------------------------------------
@@ -89,26 +90,27 @@ if len(sys.argv) == 2:
 else:
     connect_uid = SONOS_UUID
 
-print u"Discovering Sonos zones".encode('utf-8')
+print(("Discovering Sonos zones"))
 
 match_ips   = []
 for zone in soco.discover():
-    print u"   {} (UID: {})".format(zone.player_name, zone.uid).encode('utf-8')
+    print(("   {} (UID: {})".format(zone.player_name, zone.uid)))
 
     if connect_uid:
         if zone.uid.lower() == connect_uid.lower():
             match_ips.append(zone.ip_address)
     else:
         # we recognize Sonos Connect and ZP90 by their hardware revision number
+        print("{}".format(zone.get_speaker_info().get('hardware_version')))
         if zone.get_speaker_info().get('hardware_version')[:4] == '1.1.':
             match_ips.append(zone.ip_address)
-            print u"   => possible match".encode('utf-8')
-print
+            print(("   => possible match"))
+print("\n"," Found Sonos Connect Devies: ",len(match_ips),"\r\n")
 
 if len(match_ips) != 1:
-    print u"The number of Sonos Connect devices found was not exactly 1.".encode('utf-8')
-    print u"Please specify which Sonos Connect device should be used by".encode('utf-8')
-    print u"using its UID as the first parameter.".encode('utf-8')
+    print(("The number of Sonos Connect devices found was not exactly 1."))
+    print(("Please specify which Sonos Connect device should be used by"))
+    print(("using its UID as the first parameter."))
     sys.exit(1)
 
 sonos_device    = soco.SoCo(match_ips[0])
@@ -117,10 +119,10 @@ renewal_time    = 120
 
 # --- Initial MARANTZ status ---------------------------------------------------
 
-print u"MARANTZ Power status:  {}".format(avr.get_power())
-print u"MARANTZ Input select:  {}".format(avr.get_source())
-print u"MARANTZ Volume:        {}".format(avr.get_volume())
-print
+print("MARANTZ Power status:  {}".format(avr.get_power()))
+print("MARANTZ Input select:  {}".format(avr.get_source()))
+print("MARANTZ Volume:        {}".format(avr.get_volume()))
+print()
 
 # --- Main loop ---------------------------------------------------------------
 
@@ -130,7 +132,7 @@ last_status     = None
 # catch SIGTERM gracefully
 signal.signal(signal.SIGTERM, handle_sigterm)
 # non-buffered STDOUT so we can use it for logging
-auto_flush_stdout()
+#auto_flush_stdout()
 
 while True:
     # if not subscribed to SONOS connect for any reason (first start or disconnect while monitoring), (re-)subscribe
@@ -142,18 +144,18 @@ while True:
         # (renewal_time) for recovery.
 
         if subscription:
-            print u"{} *** Unsubscribing from SONOS device events".format(datetime.now()).encode('utf-8')
+            print("{} *** Unsubscribing from SONOS device events".format(datetime.now()))
             try:
                 subscription.unsubscribe()
                 soco.events.event_listener.stop()
             except Exception as e:
-                print u"{} *** Unsubscribe failed: {}".format(datetime.now(), e).encode('utf-8')
+                print('{} *** Unsubscribe failed: {}'.format(datetime.now(), e))
 
-        print u"{} *** Subscribing to SONOS device events".format(datetime.now()).encode('utf-8')
+        print("{} *** Subscribing to SONOS device events".format(datetime.now()))
         try:
             subscription = sonos_device.avTransport.subscribe(requested_timeout=renewal_time, auto_renew=True)
         except Exception as e:
-            print u"{} *** Subscribe failed: {}".format(datetime.now(), e).encode('utf-8')
+            print("{} *** Subscribe failed: {}".format(datetime.now(), e))
             # subscription failed (e.g. sonos is disconnected for a longer period of time): wait 10 seconds
             # and retry
             time.sleep(10)
@@ -164,10 +166,10 @@ while True:
         status  = event.variables.get('transport_state')
 
         if not status:
-            print u"{} Invalid SONOS status: {}".format(datetime.now(), event.variables).encode('utf-8')
+            print("{} Invalid SONOS status: {}".format(datetime.now(), event.variables))
 
         if last_status != status:
-            print u"{} SONOS play status: {}".format(datetime.now(), status).encode('utf-8')
+            print("{} SONOS play status: {}".format(datetime.now(), status))
 
         if last_status != 'PLAYING' and status == 'PLAYING':
             if not avr.get_power()['PW'] == 'ON':
@@ -175,17 +177,16 @@ while True:
             avr.set_source(MARANTZ_INPUT)
             if MARANTZ_VOLUME is not None:
                 if not avr.get_volume()['MV'] == MARANTZ_VOLUME:
-                    print 'im here'
                     time.sleep(2)
                     avr.set_volume(MARANTZ_VOLUME)
             #if MARANTZ_SOUNDPRG is not None:
             #    MARANTZ_set_value('MAIN:SOUNDPRG', MARANTZ_SOUNDPRG)
         if last_status == 'PLAYING' and status == 'PAUSED_PLAYBACK':
-            if avr.get_source()['SI'] == MARANTZ_INPUT:
-                if not avr.get_power()['PW'] == 'OFF':
+            if avr.get_source()['SI'].decode('utf-8') == MARANTZ_INPUT:
+                if not avr.get_power()['PW'].decode('utf-8') == 'OFF':
                     avr.set_power('OFF')
         last_status = status
-    except Queue.Empty:
+    except queue.Empty:
         pass
     except KeyboardInterrupt:
         handle_sigterm()
