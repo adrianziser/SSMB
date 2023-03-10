@@ -35,163 +35,206 @@
 #
 # Software prerequisites:
 # - sudo pip install soco
-
-
+# - sudo pip install denonavr
 
 import os
-import sys
-import time
+from soco import events_asyncio
+from pprint import pprint
 from datetime import datetime
-import re
-import urllib.request, urllib.parse, urllib.error, urllib.request, urllib.error, urllib.parse
-import soco
-import queue
+import logging
+import denonavr
+import asyncio
 import signal
-import Marantz
+import soco
+import time
+import sys
 
-from datetime import datetime
 
-__version__     = '0.3'
+class Unbuffered(object):
+    def __init__(self, stream):
+        self.stream = stream
 
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def writelines(self, datas):
+        self.stream.writelines(datas)
+        self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+
+soco.config.EVENTS_MODULE = events_asyncio
+
+__version__ = '0.4'
 
 
 # --- Please adapt these settings ---------------------------------------------
+# logging.basicConfig(level=logging.NOTSET)
+# The UUID of your device, if you dont have it, we will try to search for it later
+SONOS_UUID = 'RINCON_949F3EB99CCA01400'
+# IP address of your MARANTZ Receiver. Look it up in your router or set it in the Receiver menu.
+MARANTZ_IP = '192.168.11.4'
+# The ip address of your device, if you dont have it, we will try to search for it later
+SONOS_IP = '192.168.11.27'
+# Name of your Receiver's input the Sonos Connect is connected to. Should be one
+MARANTZ_INPUT = 'CD'
+# of AV1, AV2, ..., HDMI1, HDMI2, ..., AUDIO1, AUDIO2, ..., TUNER, PHONO, V-AUX, DOCK,
+# iPod, Bluetooth, UAW, NET, Napster, PC, NET RADIO, USB, iPod (USB) or the like.
+# Don't use an input name you set yourself in the Receiver's setup menu.
+# Volume the Receiver is set to when started. -20.0 equals 60 on Marantz devices. Set to None if you don't want to change it.
+MARANTZ_VOLUME = -15.0
+# DSP Sound Program to set the Receiver to when started. Set to None if you don't want to change it.
+MARANTZ_SOUNDPRG = '5ch Stereo'
+avr = None
+break_loop = False
+global last_status
+last_status = None
+sonos_device = None
+renewal_time = 120
+subscription = None
 
-SONOS_UUID       = 'RINCON_949F3EB99CCA01400'	# IP address of your MARANTZ Receiver. Look it up in your router or set it in the Receiver menu.
-MARANTZ_IP       = '192.168.11.4'            	# IP address of your MARANTZ Receiver. Look it up in your router or set it in the Receiver menu.
-MARANTZ_INPUT    = 'CD'                     	# Name of your Receiver's input the Sonos Connect is connected to. Should be one
-												# of AV1, AV2, ..., HDMI1, HDMI2, ..., AUDIO1, AUDIO2, ..., TUNER, PHONO, V-AUX, DOCK,
-												# iPod, Bluetooth, UAW, NET, Napster, PC, NET RADIO, USB, iPod (USB) or the like.
-												# Don't use an input name you set yourself in the Receiver's setup menu.
-MARANTZ_VOLUME   = '60'                     	# Volume the Receiver is set to when started. Set to None if you don't want to change it.
-MARANTZ_SOUNDPRG = '5ch Stereo'              	# DSP Sound Program to set the Receiver to when started. Set to None if you don't want to change it.
+
+async def main():
+    # --- Connect to Marantz AVR --------------------------------------------------
+    await setup_avr()
+    avr.register_callback("ALL", update_avr_callback)
+
+    print("Start")
+    # --- Discover SONOS zones ----------------------------------------------------
+
+    if len(sys.argv) == 2:
+        connect_uid = sys.argv[1]
+    else:
+        connect_uid = SONOS_UUID
+
+    global sonos_device
+    sonos_device = soco.SoCo(SONOS_IP)
+
+    # --- Initial MARANTZ status ---------------------------------------------------
+
+    print("MARANTZ Power status:  " + avr.power)
+    print("MARANTZ Input select:  " + avr.input_func)
+    print("MARANTZ Volume:        " + str(avr.volume))
+    print()
+
+    # --- Main loop ---------------------------------------------------------------
+    # catch SIGTERM gracefully
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    # non-buffered STDOUT so we can use it for logging
+    sys.stdout = Unbuffered(sys.stdout)
+
+    while True:
+        # if not subscribed to SONOS connect for any reason (first start or disconnect while monitoring), (re-)subscribe
+        if not subscription or not subscription.is_subscribed or subscription.time_left <= 5:
+            # The time_left should normally not fall below 0.85*renewal_time - or something is wrong (connection lost).
+            # Unfortunately, the soco module handles the renewal in a separate thread that just barfs  on renewal
+            # failure and doesn't set is_subscribed to False. So we check ourselves.
+            # After testing, this is so robust, it survives a reboot of the SONOS. At maximum, it needs 2 minutes
+            # (renewal_time) for recovery.
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(check_subscription())
+                await asyncio.sleep(renewal_time - 5)
+            except KeyboardInterrupt:
+                handle_sigterm()
+        if break_loop:
+            subscription.unsubscribe()
+            soco.events.event_listener.stop()
+            break
 
 
-def auto_flush_stdout():
-    unbuffered = os.fdopen(sys.stdout.fileno(), 'wb', 0)
-    sys.stdout.close()
-    sys.stdout = unbuffered
+async def check_subscription():
+    global subscription
+    if subscription:
+        print("{} *** Unsubscribing from SONOS device events".format(datetime.now()))
+        try:
+            await subscription.unsubscribe()
+            await events_asyncio.event_listener.async_stop()
+
+        except Exception as e:
+            print('{} *** Unsubscribe for renewal failed: {}'.format(datetime.now(), e))
+
+    print("{} *** Subscribing to SONOS device {} events".format(datetime.now(),
+          sonos_device.player_name))
+    try:
+        subscription = await sonos_device.avTransport.subscribe(requested_timeout=renewal_time, auto_renew=True)
+        subscription.callback = update_sonos_callback
+    except Exception as e:
+        print("{} *** Subscribe failed: {}".format(datetime.now(), e))
+        # subscription failed (e.g. sonos is disconnected for a longer period of time): wait 10 seconds
+        # and retry
+        time.sleep(10)
+
 
 def handle_sigterm(*args):
     global break_loop
     print(("SIGTERM caught. Exiting gracefully."))
     break_loop = True
+    return
 
-# --- Connect to Marantz AVR --------------------------------------------------
 
-avr = Marantz.IP("192.168.11.4") # replace with your AVR IP
-# test connectivity
-#avr.connect() # if you get an error, double check the IP
+async def update_avr_callback(zone, event, parameter):
+    print("{} Marantz callback #zone: {} #event: {} #parameter: {}".format(
+        datetime.now(), zone, event, parameter))
+    return
 
-# --- Discover SONOS zones ----------------------------------------------------
 
-if len(sys.argv) == 2:
-    connect_uid = sys.argv[1]
+def update_sonos_callback(event):
+    status = event.variables.get('transport_state')
+    global last_status
+    loop = asyncio.get_event_loop()
+    if not status:
+        print("{} Invalid SONOS status: {}".format(
+            datetime.now(), event.variables))
+
+    if last_status != status:
+        print("{} SONOS play status: {}".format(datetime.now(), status))
+
+    if last_status != 'PLAYING' and status == 'PLAYING':
+        if not avr.power == 'ON':
+            loop.create_task(avr.async_power_on())
+        loop.create_task(avr.async_set_input_func(MARANTZ_INPUT))
+
+        if MARANTZ_VOLUME is not None:
+            if not avr.volume == MARANTZ_VOLUME:
+                time.sleep(2)
+                loop.create_task(avr.async_set_volume(MARANTZ_VOLUME))
+        # if MARANTZ_SOUNDPRG is not None:
+        #    MARANTZ_set_value('MAIN:SOUNDPRG', MARANTZ_SOUNDPRG)
+    if last_status == 'PLAYING' and status == 'PAUSED_PLAYBACK':
+        if avr.input_func == MARANTZ_INPUT:
+            if not avr.power == 'OFF':
+                loop.create_task(avr.async_power_off())
+    last_status = status
+    return
+
+
+async def setup_avr():
+    global avr
+    avr = denonavr.DenonAVR(MARANTZ_IP)
+    # test connectivity
+    await avr.async_setup()
+    await avr.async_telnet_connect()
+    await avr.async_update()
+    return
+
+try:
+    loop = asyncio.get_running_loop()
+except RuntimeError:  # 'RuntimeError: There is no current event loop...'
+    loop = None
+
+if loop and loop.is_running():
+    print('Async event loop already running. Adding coroutine to the event loop.')
+    tsk = loop.create_task(main())
+    # ^-- https://docs.python.org/3/library/asyncio-task.html#task-object
+    # Optionally, a callback function can be executed when the coroutine completes
+    tsk.add_done_callback(
+        lambda t: print(f'Task done with result={t.result()}  << return val of main()'))
 else:
-    connect_uid = SONOS_UUID
+    print('Starting new event loop')
+    result = asyncio.run(main())
 
-print(("Discovering Sonos zones"))
-
-match_ips   = []
-for zone in soco.discover():
-    print(("   {} (UID: {})".format(zone.player_name, zone.uid)))
-
-    if connect_uid:
-        if zone.uid.lower() == connect_uid.lower():
-            match_ips.append(zone.ip_address)
-    else:
-        # we recognize Sonos Connect and ZP90 by their hardware revision number
-        print("{}".format(zone.get_speaker_info().get('hardware_version')))
-        if zone.get_speaker_info().get('hardware_version')[:4] == '1.1.':
-            match_ips.append(zone.ip_address)
-            print(("   => possible match"))
-print("\n"," Found Sonos Connect Devies: ",len(match_ips),"\r\n")
-
-if len(match_ips) != 1:
-    print(("The number of Sonos Connect devices found was not exactly 1."))
-    print(("Please specify which Sonos Connect device should be used by"))
-    print(("using its UID as the first parameter."))
-    sys.exit(1)
-
-sonos_device    = soco.SoCo(match_ips[0])
-subscription    = None
-renewal_time    = 120
-
-# --- Initial MARANTZ status ---------------------------------------------------
-
-print("MARANTZ Power status:  {}".format(avr.get_power()))
-print("MARANTZ Input select:  {}".format(avr.get_source()))
-print("MARANTZ Volume:        {}".format(avr.get_volume()))
-print()
-
-# --- Main loop ---------------------------------------------------------------
-
-break_loop      = False
-last_status     = None
-
-# catch SIGTERM gracefully
-signal.signal(signal.SIGTERM, handle_sigterm)
-# non-buffered STDOUT so we can use it for logging
-#auto_flush_stdout()
-
-while True:
-    # if not subscribed to SONOS connect for any reason (first start or disconnect while monitoring), (re-)subscribe
-    if not subscription or not subscription.is_subscribed or subscription.time_left <= 5:
-        # The time_left should normally not fall below 0.85*renewal_time - or something is wrong (connection lost).
-        # Unfortunately, the soco module handles the renewal in a separate thread that just barfs  on renewal
-        # failure and doesn't set is_subscribed to False. So we check ourselves.
-        # After testing, this is so robust, it survives a reboot of the SONOS. At maximum, it needs 2 minutes
-        # (renewal_time) for recovery.
-
-        if subscription:
-            print("{} *** Unsubscribing from SONOS device events".format(datetime.now()))
-            try:
-                subscription.unsubscribe()
-                soco.events.event_listener.stop()
-            except Exception as e:
-                print('{} *** Unsubscribe failed: {}'.format(datetime.now(), e))
-
-        print("{} *** Subscribing to SONOS device events".format(datetime.now()))
-        try:
-            subscription = sonos_device.avTransport.subscribe(requested_timeout=renewal_time, auto_renew=True)
-        except Exception as e:
-            print("{} *** Subscribe failed: {}".format(datetime.now(), e))
-            # subscription failed (e.g. sonos is disconnected for a longer period of time): wait 10 seconds
-            # and retry
-            time.sleep(10)
-            continue
-
-    try:
-        event   = subscription.events.get(timeout=10)
-        status  = event.variables.get('transport_state')
-
-        if not status:
-            print("{} Invalid SONOS status: {}".format(datetime.now(), event.variables))
-
-        if last_status != status:
-            print("{} SONOS play status: {}".format(datetime.now(), status))
-
-        if last_status != 'PLAYING' and status == 'PLAYING':
-            if not avr.get_power()['PW'] == 'ON':
-                avr.set_power('ON')
-            avr.set_source(MARANTZ_INPUT)
-            if MARANTZ_VOLUME is not None:
-                if not avr.get_volume()['MV'] == MARANTZ_VOLUME:
-                    time.sleep(2)
-                    avr.set_volume(MARANTZ_VOLUME)
-            #if MARANTZ_SOUNDPRG is not None:
-            #    MARANTZ_set_value('MAIN:SOUNDPRG', MARANTZ_SOUNDPRG)
-        if last_status == 'PLAYING' and status == 'PAUSED_PLAYBACK':
-            if avr.get_source()['SI'].decode('utf-8') == MARANTZ_INPUT:
-                if not avr.get_power()['PW'].decode('utf-8') == 'OFF':
-                    avr.set_power('OFF')
-        last_status = status
-    except queue.Empty:
-        pass
-    except KeyboardInterrupt:
-        handle_sigterm()
-
-    if break_loop:
-        subscription.unsubscribe()
-        soco.events.event_listener.stop()
-        break
+# await main()
