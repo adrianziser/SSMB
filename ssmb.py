@@ -144,7 +144,7 @@ async def main():
             except KeyboardInterrupt:
                 handle_sigterm()
         if break_loop:
-            print("{} *** Unsubscribing from SONOS device events".format(datetime.now()))
+            print("{} *** Unsubscribing from SONOS device {} events".format(datetime.now(),sonos_device.player_name))
             await subscription.unsubscribe()
             await events_asyncio.event_listener.async_stop()
             break
@@ -153,7 +153,7 @@ async def main():
 async def check_subscription():
     global subscription
     if subscription:
-        print("{} *** Unsubscribing from SONOS device events".format(datetime.now()))
+        print("{} *** Unsubscribing from SONOS device {} events".format(datetime.now(),sonos_device.player_name))
         try:
             await subscription.unsubscribe()
             await events_asyncio.event_listener.async_stop()
@@ -161,8 +161,7 @@ async def check_subscription():
         except Exception as e:
             print('{} *** Unsubscribe for renewal failed: {}'.format(datetime.now(), e))
 
-    print("{} *** Subscribing to SONOS device {} events".format(datetime.now(),
-          sonos_device.player_name))
+    print("{} *** Subscribing to SONOS device {} events".format(datetime.now(),sonos_device.player_name))
     try:
         subscription = await sonos_device.avTransport.subscribe(requested_timeout=renewal_time, auto_renew=True)
         subscription.callback = update_sonos_callback
@@ -190,8 +189,7 @@ def update_sonos_callback(event):
     global last_status
     loop = asyncio.get_event_loop()
     if not status:
-        print("{} Invalid SONOS status: {}".format(
-            datetime.now(), event.variables))
+        print("{} Invalid SONOS status: {}".format(datetime.now(), event.variables))
 
     if last_status != status:
         print("{} SONOS play status: {}".format(datetime.now(), status))
