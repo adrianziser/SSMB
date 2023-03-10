@@ -26,8 +26,8 @@ Prerequisites:
 
 Software prerequisites:
 - sudo pip install soco
+- sudo pip install denonavr
 
 ##Credits
-[MarantzIP](https://github.com/iamcanadian2222/MarantzIP/)
-
-[Sonos-Monitor](https://github.com/michaelotto/sonos-monitor/)
+[Soco](https://github.com/SoCo/SoCo)
+[DenonAVR](https://github.com/ol-iver/denonavr)
