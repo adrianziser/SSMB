@@ -168,7 +168,6 @@ async def check_subscription():
         # and retry
         time.sleep(10)
 
-
 def handle_sigterm(*args):
     global break_loop
     print(("SIGTERM caught. Exiting gracefully."))
@@ -236,5 +235,3 @@ if loop and loop.is_running():
 else:
     print('Starting new event loop')
     result = asyncio.run(main())
-
-# await main()
