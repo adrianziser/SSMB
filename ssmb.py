@@ -137,12 +137,16 @@ async def main():
             try:
                 loop = asyncio.get_event_loop()
                 loop.create_task(check_subscription())
-                await asyncio.sleep(renewal_time - 5)
+                threshold = renewal_time - 5
+                while threshold != 0 and not break_loop:
+                    await asyncio.sleep(1)
+                    threshold-=1
             except KeyboardInterrupt:
                 handle_sigterm()
         if break_loop:
-            subscription.unsubscribe()
-            soco.events.event_listener.stop()
+            print("{} *** Unsubscribing from SONOS device events".format(datetime.now()))
+            await subscription.unsubscribe()
+            await events_asyncio.event_listener.async_stop()
             break
 
 
@@ -168,6 +172,7 @@ async def check_subscription():
         # and retry
         time.sleep(10)
 
+
 def handle_sigterm(*args):
     global break_loop
     print(("SIGTERM caught. Exiting gracefully."))
@@ -176,8 +181,7 @@ def handle_sigterm(*args):
 
 
 async def update_avr_callback(zone, event, parameter):
-    print("{} Marantz callback #zone: {} #event: {} #parameter: {}".format(
-        datetime.now(), zone, event, parameter))
+    print("{} Marantz callback #zone: {} #event: {} #parameter: {}".format(datetime.now(), zone, event, parameter))
     return
 
 
