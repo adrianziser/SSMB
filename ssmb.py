@@ -36,6 +36,7 @@
 # Software prerequisites:
 # - sudo pip install soco
 # - sudo pip install denonavr
+# - sudo pip install aiohttp
 
 import os
 from soco import events_asyncio
@@ -187,7 +188,7 @@ async def update_avr_callback(zone, event, parameter):
 def update_sonos_callback(event):
     status = event.variables.get('transport_state')
     global last_status
-    print("Callback fired, last status is " + str(last_status) + " status is: "+str(status))
+    print(str(datetime.now()) + " Callback fired, last status is " + str(last_status) + " status is: "+str(status))
 
     loop = asyncio.get_event_loop()
     if not status:
@@ -196,22 +197,23 @@ def update_sonos_callback(event):
     if last_status != status:
         print("{} SONOS play status: {}".format(datetime.now(), status))
 
-    if last_status != 'PLAYING' and status == 'PLAYING':
+    if (last_status != 'PLAYING' and status == 'PLAYING'):
         if not avr.power == 'ON':
-            print("{} Set AVR to status ON")
+            print("{} Set AVR to status ON".format(datetime.now()))
             loop.create_task(avr.async_power_on())
         loop.create_task(avr.async_set_input_func(MARANTZ_INPUT))
 
         if MARANTZ_VOLUME is not None:
             if not avr.volume == MARANTZ_VOLUME:
-                time.sleep(2)
+                time.sleep(15)
+                print("{} Set AVR volume to 65".format(datetime.now()))
                 loop.create_task(avr.async_set_volume(MARANTZ_VOLUME))
         # if MARANTZ_SOUNDPRG is not None:
         #    MARANTZ_set_value('MAIN:SOUNDPRG', MARANTZ_SOUNDPRG)
     if last_status == 'PLAYING' and status == 'PAUSED_PLAYBACK':
         if avr.input_func == MARANTZ_INPUT:
             if not avr.power == 'OFF':
-                print("{} Set AVR to status ON")
+                print("{} Set AVR to status ON".format(datetime.now()))
                 loop.create_task(avr.async_power_off())
     last_status = status
     return
