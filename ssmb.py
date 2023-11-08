@@ -155,7 +155,7 @@ async def check_subscription():
     if subscription:
         print("{} *** Unsubscribing from SONOS device {} events".format(datetime.now(),sonos_device.player_name))
         try:
-            await subscription.unsubscribe()
+            subscription.unsubscribe()
             await events_asyncio.event_listener.async_stop()
 
         except Exception as e:
@@ -187,6 +187,8 @@ async def update_avr_callback(zone, event, parameter):
 def update_sonos_callback(event):
     status = event.variables.get('transport_state')
     global last_status
+    print("Callback fired, last status is " + str(last_status) + " status is: "+str(status))
+
     loop = asyncio.get_event_loop()
     if not status:
         print("{} Invalid SONOS status: {}".format(datetime.now(), event.variables))
@@ -196,6 +198,7 @@ def update_sonos_callback(event):
 
     if last_status != 'PLAYING' and status == 'PLAYING':
         if not avr.power == 'ON':
+            print("{} Set AVR to status ON")
             loop.create_task(avr.async_power_on())
         loop.create_task(avr.async_set_input_func(MARANTZ_INPUT))
 
@@ -208,6 +211,7 @@ def update_sonos_callback(event):
     if last_status == 'PLAYING' and status == 'PAUSED_PLAYBACK':
         if avr.input_func == MARANTZ_INPUT:
             if not avr.power == 'OFF':
+                print("{} Set AVR to status ON")
                 loop.create_task(avr.async_power_off())
     last_status = status
     return
