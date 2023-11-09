@@ -99,11 +99,11 @@ subscription = None
 
 
 async def main():
+    print("SSMB launched")
     # --- Connect to Marantz AVR --------------------------------------------------
     await setup_avr()
     avr.register_callback("ALL", update_avr_callback)
 
-    print("Start")
     # --- Discover SONOS zones ----------------------------------------------------
 
     if len(sys.argv) == 2:
@@ -205,7 +205,7 @@ def update_sonos_callback(event):
 
         if MARANTZ_VOLUME is not None:
             if not avr.volume == MARANTZ_VOLUME:
-                time.sleep(15)
+                time.sleep(5)
                 print("{} Set AVR volume to 65".format(datetime.now()))
                 loop.create_task(avr.async_set_volume(MARANTZ_VOLUME))
         # if MARANTZ_SOUNDPRG is not None:
@@ -241,5 +241,7 @@ if loop and loop.is_running():
     tsk.add_done_callback(
         lambda t: print(f'Task done with result={t.result()}  << return val of main()'))
 else:
-    print('Starting new event loop')
+    print()
+    print("------------------------------------")
+    print('Fresh start, starting new event loop')
     result = asyncio.run(main())

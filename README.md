@@ -1,4 +1,4 @@
-##SSMB (SIMPLE SONOS MARANTZ BRIDGE)
+## SSMB (SIMPLE SONOS MARANTZ BRIDGE)
 
 A simple python script which turns your avr on and off when a given sonos connect is playing, sets source and volume according to the settings
 
@@ -14,7 +14,7 @@ If the Receiver is already turned on, it just switches the input and leaves the 
 
 Optimized for minimum use of resources. I leave this running on a Raspberry Pi at my place. An A model should suffice. And it would still be bored 99% of the time.
 
-Before installing it as a daemon, try it out first: Adapt the settings in the script below. Then just run the script. It'll auto-discover your Sonos Connect. If that fails (e.g. because you have more than one Connect in your home or for other reasons), you can use the UID of your Sonos Connect as the first and only parameter of the script. The script will output all UIDs neatly for your comfort.
+Before installing it as a daemon, try it out first: Adapt the settings in the script below. Then just run the script. ~~It'll auto-discover your Sonos Connect. If that fails (e.g. because you have more than one Connect in your home or for other reasons), you can use the UID of your Sonos Connect as the first and only parameter of the script. The script will output all UIDs neatly for your comfort.~~
 
 Prerequisites:
 - Your Marantz Receiver has to be connected to the LAN.
@@ -27,7 +27,9 @@ Prerequisites:
 Software prerequisites:
 - sudo pip install soco
 - sudo pip install denonavr
+- sudo pip install aiohttp
 
-##Credits
+### Credits
 [Soco](https://github.com/SoCo/SoCo)
+
 [DenonAVR](https://github.com/ol-iver/denonavr)
