@@ -179,6 +179,12 @@ def handle_sigterm(*args):
     break_loop = True
     return
 
+# coroutine that will start another coroutine after a delay in seconds
+async def delay(coro, seconds):
+    # suspend for a time limit in seconds
+    await asyncio.sleep(seconds)
+    # execute the other coroutine
+    await coro
 
 async def update_avr_callback(zone, event, parameter):
     print("{} Marantz callback #zone: {} #event: {} #parameter: {}".format(datetime.now(), zone, event, parameter))
@@ -188,6 +194,10 @@ async def update_avr_callback(zone, event, parameter):
 def update_sonos_callback(event):
     status = event.variables.get('transport_state')
     global last_status
+    global avr_last_input
+    global avr_last_volume
+    global startup 
+
     print(str(datetime.now()) + " Callback fired, last status is " + str(last_status) + " status is: "+str(status))
 
     loop = asyncio.get_event_loop()
@@ -199,22 +209,39 @@ def update_sonos_callback(event):
 
     if (last_status != 'PLAYING' and status == 'PLAYING'):
         if not avr.power == 'ON':
+            startup = True
             print("{} Set AVR to status ON".format(datetime.now()))
+            avr_last_input = 'NONE'
             loop.create_task(avr.async_power_on())
-        loop.create_task(avr.async_set_input_func(MARANTZ_INPUT))
-
+        else:
+            startup = False
+        avr_last_input = avr.input_func
+        avr_last_volume = avr.volume
+        print(str(datetime.now()) + " Current input is " + str(avr.input_func))
+        if startup:
+            loop.create_task(delay(avr.async_set_input_func(MARANTZ_INPUT),2))
+        else: 
+            loop.create_task(avr.async_set_input_func(MARANTZ_INPUT))
+            
         if MARANTZ_VOLUME is not None:
             if not avr.volume == MARANTZ_VOLUME:
-                time.sleep(5)
-                print("{} Set AVR volume to 65".format(datetime.now()))
-                loop.create_task(avr.async_set_volume(MARANTZ_VOLUME))
+                print("{} Current volume is {}, try to set AVR volume to 65".format(datetime.now(),avr.volume))
+                loop.create_task(avr.async_mute(False))
+                loop.create_task(delay(avr.async_set_volume(MARANTZ_VOLUME),2))
+
         # if MARANTZ_SOUNDPRG is not None:
         #    MARANTZ_set_value('MAIN:SOUNDPRG', MARANTZ_SOUNDPRG)
     if last_status == 'PLAYING' and status == 'PAUSED_PLAYBACK':
         if avr.input_func == MARANTZ_INPUT:
-            if not avr.power == 'OFF':
+            if not avr_last_input == 'NONE' and not startup:
+                loop.create_task(avr.async_set_input_func(avr_last_input))
+                if not avr_last_volume == avr.volume:
+                    print("{} Current volume is {}, set back to set to {}".format(datetime.now(),avr.volume,avr_last_volume))
+                    loop.create_task(delay(avr.async_set_volume(avr_last_volume),2))
+            elif not avr.power == 'OFF':
                 print("{} Set AVR to status ON".format(datetime.now()))
                 loop.create_task(avr.async_power_off())
+        avr_last_input = 'NONE'
     last_status = status
     return
 
